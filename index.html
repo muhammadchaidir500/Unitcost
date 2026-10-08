@@ -2210,4 +2210,156 @@ if(ME){ renderNav(); route(true); }
 })();
 
 </script>
+<style>
+.km-card{margin:0 0 18px}
+.km-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.km-head h3{margin:0}
+.km-head p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.km-card table{font-size:13px}.km-card td.km-n{white-space:nowrap}.km-card .km-u{font-size:11.5px;color:var(--muted)}.km-card td{vertical-align:top}.km-card td,.km-card th{padding-left:10px;padding-right:10px}
+.km-card td.n,.km-card th.n{text-align:right;white-space:nowrap}
+.km-card .btn.km-del{padding:4px 10px;font-size:12px;color:var(--bad,#c0392b)}
+.mbox.km{max-width:620px;max-height:92vh;overflow:auto}
+.km .g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.km select{font:inherit;font-weight:400;padding:10px 12px;border:1px solid var(--input-line);border-radius:8px;background:var(--input);color:var(--text)}
+.km .hint{font-size:12px;font-weight:400;color:var(--muted)}
+.km .calc{font-size:13px;background:var(--bg-2,rgba(14,165,233,.08));border-radius:8px;padding:8px 12px;font-weight:400}
+.km .err{color:var(--bad,#c0392b);font-size:13px;font-weight:600;min-height:1em}
+@media(max-width:560px){.km .g2{grid-template-columns:1fr}}
+</style>
+<script>
+(()=>{
+const KOL=[['III','Kelas III'],['II','Kelas II'],['I','Kelas I'],['VIP','VIP']];
+const isBed=r=>r&&(/^\s*(tt|tempat tidur|bed)\s*$/i.test(r.satuan||'')||/per tempat tidur/i.test(r.nama||''));
+const fr=a=>(+a.durasi||0)*((a.frek==null||a.frek==='')?1:+a.frek);
+function kamarList(){
+  const out=[];D.tindakan.forEach(t=>{
+    const ok=D.okupansi.filter(a=>a.kode===t.kode);
+    const bed=ok.map(a=>D.ruang.find(r=>r.nama===a.ruang)).find((r,i)=>isBed(r)&&fr(ok[i])>=1440);
+    if(bed&&(/kamar|rawat inap|perawatan|bangsal|per hari/i.test(t.nama)||/kamar|rawat inap/i.test(t.kelompok||'')))out.push({t,bed});
+  });return out}
+function kelasOf(t){for(const [k] of KOL)if(+t['tarif'+k])return {key:k,tarif:+t['tarif'+k]};
+  const l=Object.entries(t.tarifLain||{}).find(([,v])=>+v);if(l)return {key:'+'+l[0],tarif:+l[1]};
+  const n=String(t.nama).toLowerCase();
+  const g=/vip/.test(n)?'VIP':/\b(3|iii)\b/.test(n)?'III':/\b(2|ii)\b/.test(n)?'II':/\b(1|i)\b/.test(n)?'I':'III';return {key:g,tarif:0}}
+function nursing(t){const a=D.aktivitas.filter(x=>x.kode===t.kode&&/perawat|bidan|ners/i.test(x.sdm||''));return a.sort((x,y)=>fr(y)-fr(x))[0]}
+function nextCode(list,pref,pad){let mx=0;const re=new RegExp('^'+pref.replace(/[-]/g,'\\-')+'(\\d+)$');list.forEach(c=>{const m=re.exec(String(c||''));if(m)mx=Math.max(mx,+m[1])});
+  let n=mx+1,c;do{c=pref+String(n).padStart(pad,'0');n++}while(list.includes(c));return c}
+const prefOf=c=>{const m=/^(.*?)(\d+)$/.exec(String(c||''));return m?[m[1],m[2].length]:[String(c||'K')+'-',2]};
+const ucOf=k=>{const t=(R&&R.tind||[]).find(x=>x.kode===k);return t?t.uc:null};
+const bor=(t,bed)=>(+bed.jumlah)?(+t.volume||0)/(+bed.jumlah*365):0;
+const SRC='Ditambahkan lewat tombol Tambah kamar';
+
+function ask(title,html){return new Promise(res=>{const o=document.createElement('div');o.className='modal';
+  o.innerHTML=`<form class="mbox"><h3>${esc(title)}</h3><div>${html}</div><div class="mact"><button type="button" class="btn" data-x>Batal</button><button class="btn pri">Ya, hapus</button></div></form>`;
+  document.body.append(o);const f=o.querySelector('form');const close=v=>{o.remove();res(v)};
+  f.querySelector('[data-x]').onclick=()=>close(false);o.onclick=e=>{if(e.target===o)close(false)};f.onsubmit=e=>{e.preventDefault();close(true)}})}
+
+function openForm(){
+  const L=kamarList();
+  if(!L.length){toast('Belum ada kamar perawatan sebagai acuan. Unggah data Excel terlebih dahulu.');return}
+  const kelasOpts=KOL.map(([k,l])=>`<option value="${k}">${l}</option>`).join('')+(D.kelasTambahan||[]).map(k=>`<option value="+${esc(k.nama)}">${esc(k.nama)} (kelas tambahan)</option>`).join('')+'<option value="NEW">+ Kelas tarif baru…</option>';
+  const o=document.createElement('div');o.className='modal';
+  o.innerHTML=`<form class="mbox km" aria-label="Tambah kamar"><h3>Tambah kamar perawatan</h3>
+  <label>Nama kamar<input name="nama" required placeholder="mis. Kamar Super VIP" autocomplete="off"></label>
+  <label>Salin pengaturan dari kamar<select name="acuan">${L.map((x,i)=>`<option value="${i}">${esc(x.t.nama)}</option>`).join('')}</select>
+   <span class="hint">Alat di kamar, asuhan keperawatan, gizi/farmasi, makan, linen &amp; BMHP harian, serta porsi nurse station disalin dari kamar ini. Semua bisa diubah lagi di menu masing-masing.</span></label>
+  <div class="g2">
+   <label>Unit / pusat biaya<select name="unit">${units().map(u=>`<option>${esc(u)}</option>`).join('')}</select></label>
+   <label>Jumlah tempat tidur (TT)<input name="tt" type="number" min="1" step="1" required></label>
+   <label>Luas per TT (m²)<input name="luas" type="number" min="1" step="0.5" required></label>
+   <label>BOR target (%)<input name="bor" type="number" min="1" max="100" step="1" required></label>
+   <label>Hari rawat 1 tahun<input name="vol" type="number" min="0" step="1" required><span class="hint">Terisi otomatis = TT × 365 × BOR; boleh diganti dengan data riil.</span></label>
+   <label>Asuhan keperawatan (menit/hari)<input name="menit" type="number" min="0" step="5" required></label>
+   <label>Kelas tarif<select name="kelas">${kelasOpts}</select></label>
+   <label>Tarif eksisting per hari (Rp)<input name="tarif" type="number" min="0" step="1000" placeholder="kosongkan jika belum ada"></label>
+   <label data-new hidden>Nama kelas tarif baru<input name="knama" placeholder="mis. Super VIP" autocomplete="off"></label>
+   <label data-new hidden>Margin kelas baru (%)<input name="kmargin" type="number" step="1" placeholder="mis. 60"></label>
+  </div>
+  <div class="calc" data-calc></div><div class="err" data-err></div>
+  <div class="mact"><button type="button" class="btn" data-x>Batal</button><button class="btn pri">Tambah kamar</button></div></form>`;
+  document.body.append(o);const f=o.querySelector('form'),E=n=>f.elements[n];
+  const close=()=>o.remove();f.querySelector('[data-x]').onclick=close;o.onclick=e=>{if(e.target===o)close()};
+  let volTouched=false;
+  const fillAcuan=()=>{const x=L[+E('acuan').value];E('unit').value=x.bed.unit;E('luas').value=+x.bed.luas||0;
+    if(!E('tt').value)E('tt').value=Math.max(1,Math.round((+x.bed.jumlah||4)/2));
+    if(!E('bor').value)E('bor').value=Math.round((bor(x.t,x.bed)||.7)*100)||70;
+    const nu=nursing(x.t);E('menit').value=nu?fr(nu):0;
+    const k=kelasOf(x.t);if(!f.dataset.kelasTouched)E('kelas').value=[...E('kelas').options].some(op=>op.value===k.key)?k.key:'III';
+    upd()};
+  const upd=()=>{if(!volTouched)E('vol').value=Math.round((+E('tt').value||0)*365*((+E('bor').value||0)/100));
+    const isNew=E('kelas').value==='NEW';f.querySelectorAll('[data-new]').forEach(e=>e.hidden=!isNew);
+    const x=L[+E('acuan').value];const uc=ucOf(x.t.kode);
+    f.querySelector('[data-calc]').innerHTML=`Kapasitas: <b>${nf0.format((+E('tt').value||0)*365)}</b> hari-TT/tahun · hari rawat <b>${nf0.format(+E('vol').value||0)}</b>${uc?` · unit cost kamar acuan saat ini <b>${rp(uc)}</b>/hari`:''}`};
+  E('acuan').onchange=fillAcuan;['tt','bor'].forEach(n=>E(n).oninput=upd);E('vol').oninput=()=>{volTouched=true;upd()};
+  E('kelas').onchange=()=>{f.dataset.kelasTouched=1;upd()};
+  fillAcuan();E('nama').focus();
+  f.onsubmit=e=>{e.preventDefault();const err=f.querySelector('[data-err]');err.textContent='';
+    const v=Object.fromEntries(new FormData(f));const x=L[+v.acuan];
+    const nama=v.nama.trim().replace(/\s*\((per (tempat tidur|hari))\)\s*$/i,'');
+    const rNama=nama+' (per tempat tidur)',tNama=nama+' (per hari)';
+    if(!nama){err.textContent='Nama kamar wajib diisi.';return}
+    if(D.ruang.some(r=>String(r.nama).toLowerCase()===rNama.toLowerCase())||D.tindakan.some(t=>String(t.nama).toLowerCase()===tNama.toLowerCase())){err.textContent='Kamar dengan nama ini sudah ada.';return}
+    let kelas=v.kelas,kNew=null;
+    if(kelas==='NEW'){const kn=(v.knama||'').trim()||nama;
+      if(KOL.some(([,l])=>l.toLowerCase()===kn.toLowerCase())||(D.kelasTambahan||[]).some(k=>k.nama.toLowerCase()===kn.toLowerCase())){err.textContent='Kelas tarif "'+kn+'" sudah ada, pilih dari daftar.';return}
+      if(v.kmargin===''){err.textContent='Isi margin kelas baru (%).';return}
+      kNew={kode:'K'+(6+(D.kelasTambahan||[]).length),nama:kn,margin:(+v.kmargin)/100,src:'kamar'};kelas='+'+kn}
+    tambah({x,nama,rNama,tNama,unit:v.unit,tt:+v.tt,luas:+v.luas,vol:+v.vol,menit:+v.menit,kelas,kNew,tarif:v.tarif===''?null:+v.tarif});close()};
+}
+
+function tambah(o){
+  const {x}=o;const src=SRC+' (salinan '+x.t.nama+')';
+  const [rp_,rpad]=prefOf(x.bed.kode);const rk=nextCode(D.ruang.map(r=>r.kode),rp_,rpad);
+  const [tp_,tpad]=prefOf(x.t.kode);const tk=nextCode(D.tindakan.map(t=>t.kode),tp_,tpad);
+  D.ruang.push({kode:rk,nama:o.rNama,unit:o.unit,luas:o.luas,jumlah:o.tt,satuan:'TT',pola:x.bed.pola||'24 jam',simultan:1,ket:SRC});
+  D.alat.filter(a=>a.kode===x.bed.kode).forEach(a=>D.alat.push({...a,kode:rk}));
+  if(o.kNew){(D.kelasTambahan=D.kelasTambahan||[]).push(o.kNew)}
+  const t={...x.t,kode:tk,nama:o.tNama,volume:o.vol,tarifRJ:null,tarifIII:null,tarifII:null,tarifI:null,tarifVIP:null};delete t.tarifLain;
+  if(o.kelas[0]==='+'){t.tarifLain={[o.kelas.slice(1)]:o.tarif}}else t['tarif'+o.kelas]=o.tarif;
+  t.kasus=x.t.kasus||'1 hari rawat per pasien';
+  D.tindakan.push(t);
+  const nu=nursing(x.t);
+  D.aktivitas.filter(a=>a.kode===x.t.kode).forEach(a=>D.aktivitas.push({...a,kode:tk,durasi:a===nu?o.menit:a.durasi,frek:a===nu?1:a.frek,sumber:src}));
+  D.okupansi.filter(a=>a.kode===x.t.kode).forEach(a=>D.okupansi.push({...a,kode:tk,ruang:a.ruang===x.bed.nama?o.rNama:a.ruang,sumber:src}));
+  D.pakaiBmhp.filter(a=>a.kode===x.t.kode).forEach(a=>D.pakaiBmhp.push({...a,kode:tk,sumber:src}));
+  recalc(false);
+  const uc=ucOf(tk),rt=(R.tind||[]).find(z=>z.kode===tk);const us=rt&&rt.usul?rt.usul[o.kelas[0]==='+'?o.kelas.slice(1):o.kelas]:null;
+  toast(`Kamar "${o.nama}" ditambahkan (${tk}, ruang ${rk}). Unit cost ${rp(uc)}/hari${us?' · tarif usulan '+rp(us):''}.`);
+  route(true);
+}
+
+async function hapus(k){
+  const x=kamarList().find(z=>z.t.kode===k);if(!x)return;
+  const shared=D.okupansi.some(a=>a.kode!==k&&a.ruang===x.bed.nama);
+  const yes=await ask('Hapus kamar?',`<p><b>${esc(x.t.nama)}</b> (${esc(k)}) beserta aktivitas SDM, okupansi ruang, dan pemakaian BMHP-nya akan dihapus.${shared?'':` Ruangan <b>${esc(x.bed.nama)}</b> (${esc(x.bed.kode)}) dan asetnya juga dihapus.`}</p>`);
+  if(!yes)return;
+  D.tindakan=D.tindakan.filter(t=>t.kode!==k);
+  ['aktivitas','okupansi','pakaiBmhp'].forEach(n=>D[n]=D[n].filter(a=>a.kode!==k));
+  if(!shared){D.ruang=D.ruang.filter(r=>r.kode!==x.bed.kode);D.alat=D.alat.filter(a=>a.kode!==x.bed.kode)}
+  if(D.kelasTambahan)D.kelasTambahan=D.kelasTambahan.filter(kt=>kt.src!=='kamar'||D.tindakan.some(t=>t.tarifLain&&kt.nama in t.tarifLain));
+  recalc(false);toast('Kamar "'+x.t.nama+'" dihapus.');route(true);
+}
+
+function panel(m){
+  const L=kamarList();const c=document.createElement('div');c.className='card km-card';
+  const tarifTxt=t=>{const k=kelasOf(t);return k.tarif?rp(k.tarif):'–'};
+  const klsTxt=t=>{const k=kelasOf(t);return k.key[0]==='+'?k.key.slice(1):(KOL.find(z=>z[0]===k.key)||[,''])[1]};
+  c.innerHTML=`<div class="km-head"><div><h3>Kamar perawatan</h3><p>${L.length} jenis kamar · ${nf0.format(L.reduce((s,x)=>s+(+x.bed.jumlah||0),0))} TT. Tambah kamar membuat ruangan, aset, tindakan per hari, asuhan keperawatan, okupansi, dan BMHP harian sekaligus.</p></div>
+   <button class="btn pri" data-km-add>+ Tambah kamar</button></div>
+   ${L.length?`<div class="tw"><table><thead><tr><th>Kode</th><th>Kamar</th><th class="n">TT</th><th class="n">Luas/TT</th><th class="n">Hari rawat/th</th><th class="n">BOR</th><th>Kelas tarif</th><th class="n">Unit cost/hari</th><th class="n">Tarif eksisting</th><th></th></tr></thead><tbody>
+   ${L.map(x=>`<tr><td>${esc(x.t.kode)}</td><td class="km-n">${esc(String(x.t.nama).replace(/\s*\(per hari\)\s*$/i,''))}<div class="km-u">${esc(x.bed.unit)} · ${esc(x.bed.kode)}</div></td><td class="n">${nf0.format(+x.bed.jumlah||0)}</td><td class="n">${nf0.format(+x.bed.luas||0)} m²</td><td class="n">${nf0.format(+x.t.volume||0)}</td><td class="n">${Math.round(bor(x.t,x.bed)*100)}%</td><td>${esc(klsTxt(x.t))}</td><td class="n">${rp(ucOf(x.t.kode))}</td><td class="n">${tarifTxt(x.t)}</td><td><button class="btn km-del" data-km-del="${esc(x.t.kode)}" title="Hapus kamar ini" aria-label="Hapus kamar">✕</button></td></tr>`).join('')}
+   </tbody></table></div>`:'<p class="lead">Belum ada kamar. Unggah data Excel terlebih dahulu agar ada kamar acuan.</p>'}`;
+  const lead=m.querySelector('.lead');(lead||m.firstChild).after(c);
+  c.querySelector('[data-km-add]').onclick=openForm;
+  c.querySelectorAll('[data-km-del]').forEach(b=>b.onclick=()=>hapus(b.dataset.kmDel));
+}
+function btnOnly(m){const lead=m.querySelector('.lead');if(!lead)return;const b=document.createElement('button');b.className='btn pri';b.textContent='+ Tambah kamar';b.style.margin='0 0 12px';b.onclick=openForm;lead.after(b)}
+
+const _r=PAGES['m-ruang'];PAGES['m-ruang']=m=>{_r(m);panel(m)};
+const _t=PAGES['m-tarif'];PAGES['m-tarif']=m=>{_t(m);btnOnly(m)};
+window.ucKamar={kamarList,openForm,hapus};
+try{if(ME&&/m-ruang|m-tarif/.test(location.hash))route(true)}catch(e){}
+})();
+</script>
+
 </body></html>
