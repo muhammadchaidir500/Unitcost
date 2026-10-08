@@ -1485,13 +1485,18 @@ const ICP={
 const ic=k=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${ICP[k]||'<circle cx="12" cy="12" r="3"/>'}</svg>`;
 const NAVOPEN={};
 let NAVPIN=false;try{NAVPIN=localStorage.getItem('uc-navpin')==='1'}catch(e){}
-function navExpand(on){const n=$('#nav');if(!n)return;n.classList.toggle('exp',!!on||NAVPIN)}
+const NAVST={exp:0,rail:0};
+function navFocus(n){const ns=n.querySelector('.navs');if(!ns)return;let a=ns.querySelector('a.on');if(!a||!a.offsetParent)a=ns.querySelector('.sub.has-on')||a;if(!a||!a.offsetParent)return;
+ const fit=()=>{const r=a.getBoundingClientRect(),q=ns.getBoundingClientRect();if(q.height&&(r.top<q.top+8||r.bottom>q.bottom-8))ns.scrollTop+=r.top-q.top-q.height/2+r.height/2};fit()}
+function navExpand(on){const n=$('#nav');if(!n)return;const ns=n.querySelector('.navs');const was=n.classList.contains('exp');if(ns)NAVST[was?'exp':'rail']=ns.scrollTop;
+ n.classList.toggle('exp',!!on||NAVPIN);const now=n.classList.contains('exp');if(ns&&was!==now){ns.scrollTop=NAVST[now?'exp':'rail'];navFocus(n)}}
 function navApplyPin(){document.body.classList.toggle('navpin',NAVPIN);if(NAVPIN)$('#nav').classList.add('exp');const b=$('#navpin');if(b){b.setAttribute('aria-pressed',NAVPIN);b.title=NAVPIN?'Lepas sematan (menu sembunyi otomatis)':'Sematkan menu agar selalu terbuka'}}
-function renderNav(){const cur=location.hash.slice(1)||'dashboard';const n=$('#nav');
+function renderNav(){const cur=location.hash.slice(1)||'dashboard';const n=$('#nav');{const _ps=n.querySelector('.navs');if(_ps)NAVST[n.classList.contains('exp')?'exp':'rail']=_ps.scrollTop}
  const link=(id,l,cls='',extra='')=>`<a href="#${id}" class="${cls}${cur===id?' on':''}" title="${esc(l)}" ${extra}>${ic(id)}<span class="lbl">${esc(l)}</span></a>`;
  n.innerHTML=`<div class="brand"><span class="bmark" aria-hidden="true"></span><div class="btxt"><b>Unit Cost TDABC</b><span>Step Down (Hybrid) · iDRG</span></div><button class="pinb" id="navpin" type="button" aria-label="Sematkan menu">${ic('pin')}</button><button class="btn navclose" id="navclose" aria-label="Tutup menu">✕</button></div><div class="navs">`+
   navList().map(([g,items])=>`<div class="grp"><span>${esc(g)}</span></div>`+items.map(([id,nn,l,t])=>Array.isArray(l)?(()=>{const has=l.some(x=>x[0]===cur),on=has||NAVOPEN[id];return `<button class="sub ${has?'has-on':''}" data-sub="${id}" aria-expanded="${!!on}" title="${esc(t)}">${ic(id)}<span class="lbl">${esc(t)}</span><span class="chev">${ic('chev')}</span></button><div class="subl ${on?'open':''}" id="sub-${id}">${l.map(([i2,l2])=>link(i2,l2)).join('')}</div>`})():link(id,l)).join('')).join('')+
   (hasData()?`<div class="grp"><span>Data</span></div><a href="#" data-act="backup" title="Cadangkan semua data (xlsx)">${ic('backup')}<span class="lbl">Cadangkan semua data (xlsx)</span></a><a href="#" data-act="reset" title="Kembalikan data awal">${ic('reset')}<span class="lbl">Kembalikan data awal</span></a>`:'')+`</div>`;
+ {const _ns=n.querySelector('.navs');if(_ns){_ns.scrollTop=NAVST[n.classList.contains('exp')?'exp':'rail'];navFocus(n)}}
  n.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{const id=b.dataset.sub,o=b.getAttribute('aria-expanded')!=='true';NAVOPEN[id]=o;b.setAttribute('aria-expanded',o);$('#sub-'+id).classList.toggle('open',o);navExpand(true)});
  n.querySelectorAll('[data-act]').forEach(a=>a.onclick=e=>{e.preventDefault();if(a.dataset.act==='reset'){if(confirm('Semua perubahan di browser ini akan diganti dengan data awal akun ini ('+(dataUser()&&dataUser().id==='rssim'?'data simulasi RS Simulasi':'contoh RS X')+'). Lanjutkan?')){const nm=D.identitas.nama;D=clone(seedFor(dataUser()));D.identitas.nama=nm;recalc();toast('Data awal dipulihkan.')}}else backup()});
  $('#navclose').onclick=()=>n.classList.remove('open');
