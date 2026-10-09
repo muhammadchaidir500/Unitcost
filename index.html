@@ -1292,7 +1292,7 @@ if(typeof module!=='undefined')module.exports={compute};
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
 <script>const SEED=JSON.parse(document.getElementById('seed').textContent);const SEEDSIM=JSON.parse(document.getElementById('seed-sim').textContent);const KEEPCFG=['masaManfaat','pola','dasarAlokasi','jenisCC','kategoriBTL'];
-const blankSeed=nama=>{const d=JSON.parse(JSON.stringify(SEED));Object.keys(d).forEach(k=>{if(Array.isArray(d[k])&&!KEEPCFG.includes(k))d[k]=[]});d.identitas.nama=nama||'';d.identitas.alamat='';return d};
+const blankSeed=nama=>{const d=JSON.parse(JSON.stringify(SEED));Object.keys(d).forEach(k=>{if(Array.isArray(d[k])&&!KEEPCFG.includes(k))d[k]=[]});d.identitas.nama=nama||'';d.identitas.alamat='';Object.assign(d.param,{luasPBG:0,nilaiGedung:0,kwh:0,tarifKwh:0});return d};
 const seedFor=u=>u&&u.id==='rssim'?SEEDSIM:SEED;
 const BASEKEY='uc-tdabc-kmk346-v1';let KEY=null;
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -1325,7 +1325,7 @@ async function ensureAuth(){try{AUTH=JSON.parse(store.get(AUTH_KEY))}catch(e){AU
  AUTH={users:[await mkUser({id:'sa',username:'superadmin',name:'Super Admin',role:'super',pw:'Admin@2026'}),await mkUser({id:'rsx',username:'rsx',name:'RS X',role:'rs',pw:'Rsx@2026',dataKey:BASEKEY}),await mkUser({id:'rssim',username:'rssim',name:'RS Simulasi',role:'rs',pw:'Sim@2026',dataKey:BASEKEY+'::sim'})]};saveAuth()}
 const dataUser=()=>!ME?null:ME.role==='rs'?ME:(CTX?AUTH.users.find(u=>u.id===CTX)||null:null);
 const hasData=()=>!!dataUser();
-const navList=()=>{const a=ME&&ME.role==='super'?[['Administrasi',[['akun','','Kelola akun']]]]:[];return ME&&ME.role==='super'&&!CTX?a:[...NAV,...a]};
+const navList=()=>{const a=ME&&ME.role==='super'?[['Administrasi',[['akun','','Kelola akun'],['log','','Riwayat kegiatan']]]]:[];return ME&&ME.role==='super'&&!CTX?a:[...NAV,...a]};
 function loadData(){const u=dataUser();R=null;if(typeof UP!=='undefined'){UP.res=null;UP.applied=null;UNDO=null}
  if(!u){KEY=null;D=clone(SEED);R=compute(D);return}
  KEY=u.dataKey;let d=null;try{const t=store.get(KEY);if(t){d=JSON.parse(t);if(!d||!d.tindakan)d=null}}catch(e){d=null}
@@ -1764,7 +1764,7 @@ PAGES.rekap=m=>{const T=R.tind,g={};T.forEach(t=>{(g[t.kelompok]=g[t.kelompok]||
 function rekonChecks(){const U=new Set(D.units.map(u=>u.unit)),K=new Set(D.kelompok.map(k=>k.kelompok)),S=new Set(D.sdm.map(s=>String(s.profesi).trim())),RN=new Set(D.ruang.map(r=>r.nama)),BN=new Set(D.bmhp.map(b=>b.nama)),TK=new Set(D.tindakan.map(t=>t.kode)),RK=new Set(D.ruang.map(r=>r.kode));
  const cnt={};D.bmhp.forEach(b=>cnt[b.nama]=(cnt[b.nama]||0)+1);
  const ccU=new Set(D.cc.flatMap(c=>c.units));
- const listr=R.ruang.reduce((a,r)=>a+r.listrik,0)-R.totalListrik, aic=R.finals.reduce((a,f)=>a+f.aic,0)-R.poolDistrib, pool=R.cc.reduce((a,c)=>a+c.F,0)-R.pool;
+ const listr=R.ruang.length?R.ruang.reduce((a,r)=>a+r.listrik,0)-R.totalListrik:0, aic=R.finals.reduce((a,f)=>a+f.aic,0)-R.poolDistrib, pool=R.cc.reduce((a,c)=>a+c.F,0)-R.pool;
  return [
   {l:'Ruangan dengan unit yang tidak ada di master unit',v:D.ruang.filter(r=>!U.has(r.unit)).length},
   {l:'Unit ruangan yang tidak masuk pusat biaya mana pun',v:[...U].filter(u=>!ccU.has(u)&&D.ruang.some(r=>r.unit===u)).length},
@@ -1914,7 +1914,7 @@ PAGES.unggah=m=>{
  const rp_=$('#up-rep');if(rp_)rp_.onclick=reportXlsx;
  const un=$('#up-undo');if(un)un.onclick=undoUpload;};
 
-function route(keep){if(!ME)return;let id=location.hash.slice(1)||'dashboard';if(ME.role==='super'&&!CTX)id='akun';else if(ME.role!=='super'&&id==='akun')id='dashboard';const m=$('#main');const y=window.scrollY;(PAGES[id]||PAGES.dashboard)(m);{const SRC={'h-sdm':[['m-sdm','Sumber daya manusia'],['m-akt','Aktivitas SDM tiap tindakan']],'h-sarana':[['m-ruang','Sarana & ruangan'],['m-alat','Aset medis & non-medis'],['input','Input data & parameter']],'h-oh':[['m-btl','Kategori biaya'],['m-cc','Jenis pusat biaya'],['m-dasar','Statistik alokasi'],['input','Input data & parameter']],'h-oku':[['m-akt','Aktivitas SDM tiap tindakan']],'h-bmhp':[['m-bmhp','Obat & BMHP']]}[id];const ld=m.querySelector('p.lead');if(SRC&&ld)ld.insertAdjacentHTML('afterend',`<div class="srcbar"><span>Angka di halaman ini dihitung otomatis. Untuk mengubahnya, edit data sumber di:</span>${SRC.map(x=>`<a class="btn" href="#${x[0]}">${x[1]} &rarr;</a>`).join('')}</div>`)}addCrumb(id);renderNav();if(keep)window.scrollTo(0,y);else window.scrollTo(0,0)}
+function route(keep){if(!ME)return;let id=location.hash.slice(1)||'dashboard';if(ME.role==='super'&&!CTX&&id!=='log')id='akun';else if(ME.role!=='super'&&id==='akun')id='dashboard';const m=$('#main');const y=window.scrollY;(PAGES[id]||PAGES.dashboard)(m);{const SRC={'h-sdm':[['m-sdm','Sumber daya manusia'],['m-akt','Aktivitas SDM tiap tindakan']],'h-sarana':[['m-ruang','Sarana & ruangan'],['m-alat','Aset medis & non-medis'],['input','Input data & parameter']],'h-oh':[['m-btl','Kategori biaya'],['m-cc','Jenis pusat biaya'],['m-dasar','Statistik alokasi'],['input','Input data & parameter']],'h-oku':[['m-akt','Aktivitas SDM tiap tindakan']],'h-bmhp':[['m-bmhp','Obat & BMHP']]}[id];const ld=m.querySelector('p.lead');if(SRC&&ld)ld.insertAdjacentHTML('afterend',`<div class="srcbar"><span>Angka di halaman ini dihitung otomatis. Untuk mengubahnya, edit data sumber di:</span>${SRC.map(x=>`<a class="btn" href="#${x[0]}">${x[1]} &rarr;</a>`).join('')}</div>`)}addCrumb(id);renderNav();if(keep)window.scrollTo(0,y);else window.scrollTo(0,0)}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-fedit],[data-fsave],[data-fcancel]');if(!b)return;
  if(b.hasAttribute('data-fedit')){FSNAP=clone(D);FEDIT=true;route(true)}
  else if(b.hasAttribute('data-fsave')){FEDIT=false;FSNAP=null;recalc();toast('Parameter disimpan & dihitung ulang.')}
@@ -2485,6 +2485,7 @@ PAGES.identitas=m=>{const I=D.identitas||(D.identitas={}),u=dataUser(),sup=ME&&M
   const du=dataUser();if(du&&du.name!==nv.nama){du.name=nv.nama;saveAuth()}
   IDEDIT=false;recalc(false);renderHeader();PAGES.identitas(m);toast('Identitas disimpan dan disinkronkan ke Simulator INA-CBG.')};
 };
+{const _ld=loadData;loadData=function(){_ld();try{const P=D.param||{};if(!(D.ruang||[]).length&&!(D.tindakan||[]).length&&+P.kwh===+SEED.param.kwh&&+P.nilaiGedung===+SEED.param.nilaiGedung){Object.assign(P,{luasPBG:0,nilaiGedung:0,kwh:0,tarifKwh:0});R=compute(D);persist()}}catch(e){}}}
 window.__ucDemo=()=>{const u=dataUser();return !!u&&(u.id==='rsx'||u.id==='rssim')};
 /* ===== Panel super admin ===== */
 const identOfUser=u=>{try{const s=u.dataKey&&store.get(u.dataKey);if(s){const d=JSON.parse(s);if(d&&d.identitas)return d.identitas}}catch(e){}return (seedFor(u)||{}).identitas||{}};
@@ -2547,10 +2548,10 @@ nav.side a.lk,nav.side .sub.lk{opacity:.62}nav.side .lkx{margin-left:auto;font-s
 <script>
 /* ===== Paket pendampingan bertahap (Tahap 1–4) ===== */
 const TAHAP=[
- {n:1,nama:'Pengumpulan data',sub:'Isi & validasi data dasar RS',ids:['identitas','panduan','unggah','m-btl','m-cc','m-dasar','m-sdm','m-ruang','m-alat','m-bmhp','m-akt','m-tarif','input'],
+ {n:1,nama:'Pengumpulan data',sub:'Isi & validasi data dasar RS',ids:['identitas','panduan','unggah','m-sdm','m-ruang','m-alat','m-bmhp','m-akt','m-tarif','input'],
   isi:['Template isian Tahap 1 + kamus data','Unggah & validasi data Excel','Master SDM, sarana, aset, BMHP, tindakan'],hasil:'Data dasar RS lengkap & tervalidasi'},
- {n:2,nama:'Unit cost',sub:'Hitung biaya per tindakan',ids:['dashboard','h-sdm','h-sarana','h-oh','h-oku','h-bmhp','kalk','rekon'],
-  isi:['CCR SDM & sarana','Step down & overhead','Kalkulator unit cost, rekonsiliasi'],hasil:'Unit cost seluruh tindakan & peta kapasitas'},
+ {n:2,nama:'Unit cost',sub:'Hitung biaya per tindakan',ids:['dashboard','h-sdm','h-sarana','h-oh','h-oku','h-bmhp','kalk','rekon','m-btl','m-cc','m-dasar'],
+  isi:['Pengaturan step down: pusat biaya, statistik alokasi, kategori biaya','CCR SDM & sarana, overhead','Kalkulator unit cost, rekonsiliasi'],hasil:'Unit cost seluruh tindakan & peta kapasitas'},
  {n:3,nama:'Tarif & clinical pathway',sub:'Susun tarif dan paket CP',ids:['rekap','idrg-map','idrg-cp','idrg-buku','idrg-uc'],
   isi:['Daftar Tarif usulan per kelas','Clinical pathway & billing','Buku tarif paket'],hasil:'Daftar tarif usulan & CP siap disahkan'},
  {n:4,nama:'Analisis INA-CBG / iDRG',sub:'Bandingkan dengan klaim JKN',ids:['idrg-dash','idrg-data','idrg-sim','idrg-cbg','idrg-cw','idrg-an','idrg-grp','idrg-ics','idrg-guide'],
@@ -2602,5 +2603,82 @@ const _ungT=PAGES.unggah;
 PAGES.unggah=m=>{_ungT(m);if(!ME||ME.role==='super')return;const u=dataUser();if(u&&(u.id==='rsx'||u.id==='rssim'))return;
  const a=m.querySelector('a[href="Template_Kosong.xlsx"]');if(a){const p=a.parentElement;p.innerHTML='<a class="btn pri" href="Template_Tahap1_Isian_UnitCost.xlsx" download>Template Tahap 1 – isian (dengan kamus data & checklist)</a>'}};
 try{if(ME){renderNav();route(true)}}catch(e){}
+</script>
+<style>
+@media print{body.rsmode:not(.printok) *{display:none!important}body.rsmode:not(.printok)::after{content:"Cetak memerlukan izin super admin UnitCost.";display:block;font:16px sans-serif;padding:40px}}
+.gate-m .mbox{max-width:420px}#lg-rs,#lg-h{font:inherit;font-size:13.5px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);min-width:160px}
+</style>
+<script>
+/* ===== Kunci ekspor/impor: izin super admin + riwayat kegiatan ===== */
+const LOGK='uc-actlog';
+const actLog=()=>{try{return JSON.parse(localStorage.getItem(LOGK)||'[]')}catch(e){return []}};
+const pgLabel=()=>{const id=location.hash.slice(1);try{for(const [g,items] of navList())for(const it of items){if(it[0]===id)return it[2];if(Array.isArray(it[2])){const x=it[2].find(z=>z[0]===id);if(x)return x[1]}}}catch(e){}return id||'-'};
+function logAct(o){try{o.hal=o.hal||pgLabel();const L=actLog();const u=dataUser()||ME||{};L.unshift(Object.assign({t:Date.now(),rs:(D&&D.identitas&&D.identitas.nama)||u.name||'-',uid:u.id||'',user:ME?ME.username:'-'},o));localStorage.setItem(LOGK,JSON.stringify(L.slice(0,3000)))}catch(e){}}
+const gated=()=>!!ME&&ME.role==='rs';
+let GRANT=0,GEL=null;const useGrant=()=>{if(Date.now()<GRANT){GRANT=0;return true}return false};
+async function saCheck(pw){for(const u of AUTH.users.filter(x=>x.role==='super'))if(await sha(u.salt+'|'+pw)===u.hash)return u;return null}
+function gate(action){
+ if(!gated())return Promise.resolve(true);
+ if(useGrant())return Promise.resolve(true);
+ return new Promise(res=>{const o=document.createElement('div');o.className='modal gate-m';
+  o.innerHTML=`<form class="mbox" role="dialog" aria-label="Izin super admin"><h3>🔐 Perlu izin super admin</h3><p class="note" style="margin:0">Tindakan <b>${esc(action)}</b> hanya dapat dilakukan dengan kata sandi super admin. Percobaan ini dicatat di riwayat kegiatan.</p><label>Kata sandi super admin<input name="pw" type="password" autocomplete="off" required></label><div class="gate-err" style="color:#C0392B;font-size:13px;font-weight:600;min-height:1em"></div><div class="mact"><button type="button" class="btn" data-x>Batal</button><button class="btn pri">Izinkan</button></div></form>`;
+  document.body.append(o);const f=o.querySelector('form');setTimeout(()=>f.pw.focus(),20);let tries=0;
+  const done=v=>{o.remove();res(v)};
+  f.querySelector('[data-x]').onclick=()=>{logAct({action,hasil:'Batal'});done(false)};
+  f.onsubmit=async e=>{e.preventDefault();const sa=await saCheck(f.pw.value);
+   if(sa){logAct({action,hasil:'Diizinkan',oleh:sa.username});GRANT=Date.now()+30000;done(true)}
+   else{tries++;logAct({action,hasil:'Sandi salah'});f.querySelector('.gate-err').textContent='Kata sandi salah'+(tries>1?' ('+tries+'x)':'')+'.';f.pw.value='';f.pw.focus();if(tries>=3){done(false)}}}})}
+/* 1) semua unduhan lewat saveFile */
+const _saveFileG=saveFile;
+let SAVING=0;saveFile=async function(name,...a){if(!(await gate('Unduh '+name)))return;SAVING++;try{return await _saveFileG(name,...a)}finally{setTimeout(()=>SAVING--,50)}};
+/* 2) klik tombol/tautan ekspor-impor & input file (dokumen utama + simulator) */
+const ACTRE=/(unduh|ekspor|export|download|cetak|print|impor|import|unggah|upload|cadangkan|backup|template|pdf|xlsx|csv)/i;
+function actName(el){const t=(el.getAttribute('aria-label')||el.title||el.textContent||'').replace(/\s+/g,' ').trim();return t.slice(0,80)||(el.id?'#'+el.id:'aksi')}
+function targetOf(e){const t=e.target;if(!t||!t.closest)return null;
+ const fi=t.closest('input[type=file]')||(t.closest('label')&&t.closest('label').querySelector('input[type=file]'));if(fi)return {el:fi,name:'Unggah file'+(fi.closest('label')?': '+actName(fi.closest('label')):'')};
+ const a=t.closest('a[download]');if(a&&SAVING&&/^blob:/.test(a.getAttribute('href')||''))return null;if(a)return {el:a,name:'Unduh '+(a.getAttribute('download')||a.getAttribute('href')||actName(a))};
+ const b=t.closest('button,a,[role=button]');if(!b)return null;if(b.closest('.gate-m'))return null;
+ if(b.tagName==='A'){const h=b.getAttribute('href')||'';if(h.length>1&&h[0]==='#'&&!b.dataset.act)return null}
+ if(b.closest('#nav')&&!b.dataset.act)return null;
+ const nm=actName(b);return ACTRE.test(nm)||b.dataset.act==='backup'||b.hasAttribute('data-exp')||b.hasAttribute('data-pdf')||b.hasAttribute('data-imp')?{el:b,name:nm}:null}
+function guardDoc(doc,win){if(!doc||doc.__ucGate)return;doc.__ucGate=1;
+ doc.addEventListener('click',e=>{if(!gated())return;const T=targetOf(e);if(!T)return;if(GEL&&T.el===GEL){GEL=null;if(T.el.matches('input[type=file]'))GRANT=0;return}
+  e.preventDefault();e.stopImmediatePropagation();gate(T.name).then(ok=>{if(ok){GEL=T.el;T.el.click();setTimeout(()=>{if(GEL===T.el)GEL=null},1000)}})},true);
+ ['drop','paste'].forEach(ev=>doc.addEventListener(ev,e=>{if(!gated()||useGrant())return;const fs=e.dataTransfer?e.dataTransfer.files:(e.clipboardData&&e.clipboardData.files);if(!fs||!fs.length)return;
+  e.preventDefault();e.stopImmediatePropagation();const files=[...fs],tg=e.target;gate('Unggah file (seret & lepas): '+files.map(f=>f.name).join(', ')).then(ok=>{if(!ok)return;try{const dt=new (win.DataTransfer)();files.forEach(f=>dt.items.add(f));tg.dispatchEvent(new (win.DragEvent)('drop',{bubbles:true,cancelable:true,dataTransfer:dt}))}catch(err){toast('Izin diberikan. Silakan seret file sekali lagi.')}})},true));
+ doc.addEventListener('keydown',e=>{if(!gated())return;const k=(e.key||'').toLowerCase();if((e.ctrlKey||e.metaKey)&&(k==='s'||k==='p')){e.preventDefault();e.stopImmediatePropagation();
+  if(k==='s'){logAct({action:'Simpan halaman (Ctrl+S)',hasil:'Diblokir'});toast('Menyimpan halaman tidak diizinkan.');return}
+  gate('Cetak halaman').then(ok=>{if(ok){document.body.classList.add('printok');win.print();setTimeout(()=>document.body.classList.remove('printok'),1500)}})}},true);
+ if(win&&win.print&&!win.__ucPrint){win.__ucPrint=1;const op=win.print.bind(win);win.print=function(){if(!gated()||useGrant()){document.body.classList.add('printok');op();setTimeout(()=>document.body.classList.remove('printok'),1500);return}gate('Cetak').then(ok=>{if(ok){document.body.classList.add('printok');op();setTimeout(()=>document.body.classList.remove('printok'),1500)}})}}
+ doc.addEventListener('contextmenu',e=>{if(gated())e.preventDefault()},true)}
+guardDoc(document,window);
+setInterval(()=>{const f=document.querySelector('#simwrap iframe');if(f&&f.contentDocument&&f.contentDocument.readyState!=='loading')guardDoc(f.contentDocument,f.contentWindow)},800);
+/* 3) mode RS: cetak via menu browser dikosongkan */
+const _applyRS=()=>document.body.classList.toggle('rsmode',gated());setInterval(_applyRS,1000);
+/* 4) catat login */
+const _enterG=enter;enter=function(){_enterG();try{if(ME&&ME.role==='rs')logAct({action:'Masuk aplikasi',hasil:'Login'})}catch(e){}_applyRS()};
+/* 5) halaman riwayat kegiatan (khusus super admin) */
+ICP.log='<path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/>';
+let LOGF={rs:'',h:''};
+PAGES.log=m=>{if(!ME||ME.role!=='super'){location.hash='identitas';return}
+ const L=actLog(),rsL=[...new Set(L.map(x=>x.rs))].sort(),hL=[...new Set(L.map(x=>x.hasil))];
+ const V=L.filter(x=>(!LOGF.rs||x.rs===LOGF.rs)&&(!LOGF.h||x.hasil===LOGF.h));
+ const cnt=h=>L.filter(x=>x.hasil===h&&Date.now()-x.t<7*864e5).length;
+ const tag=h=>`<span class="tag ${h==='Diizinkan'||h==='Login'?'t-ok':h==='Batal'?'':'t-bad'}">${esc(h)}</span>`;
+ m.innerHTML=`<div class="sa-hero"><div class="pn-k">Panel super admin</div><h2>Riwayat kegiatan</h2><p>Percobaan unduh, unggah, ekspor, impor, dan cetak oleh akun rumah sakit. Hanya terlihat oleh super admin.</p></div>
+ <div class="sa-cards"><div class="card"><span class="note">Diizinkan (7 hari)</span><b>${cnt('Diizinkan')}</b></div><div class="card"><span class="note">Sandi salah (7 hari)</span><b style="color:#C0392B">${cnt('Sandi salah')}</b></div><div class="card"><span class="note">Dibatalkan (7 hari)</span><b>${cnt('Batal')}</b></div><div class="card"><span class="note">Diblokir (7 hari)</span><b>${cnt('Diblokir')}</b></div></div>
+ <div class="card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:end"><label style="display:grid;gap:4px;font-size:13px;font-weight:600">Rumah sakit<select id="lg-rs"><option value="">Semua</option>${rsL.map(r=>`<option ${r===LOGF.rs?'selected':''}>${esc(r)}</option>`).join('')}</select></label>
+  <label style="display:grid;gap:4px;font-size:13px;font-weight:600">Hasil<select id="lg-h"><option value="">Semua</option>${hL.map(r=>`<option ${r===LOGF.h?'selected':''}>${esc(r)}</option>`).join('')}</select></label>
+  <span class="note" style="margin-left:auto">${V.length} catatan</span><button class="btn" id="lg-x">Ekspor xlsx</button><button class="btn bad" id="lg-clr">Hapus riwayat</button></div>
+ <div class="tw" style="margin-top:12px"><table><thead><tr><th>Waktu</th><th>Rumah sakit</th><th>Pengguna</th><th>Kegiatan</th><th>Halaman</th><th>Hasil</th><th>Disetujui oleh</th></tr></thead><tbody>
+ ${V.slice(0,500).map(x=>`<tr><td style="white-space:nowrap">${new Date(x.t).toLocaleString('id-ID',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})}</td><td><b>${esc(x.rs)}</b></td><td>${esc(x.user)}</td><td>${esc(x.action)}</td><td>${esc(x.hal||'–')}</td><td>${tag(x.hasil)}</td><td>${esc(x.oleh||'–')}</td></tr>`).join('')||'<tr><td colspan="7" class="note">Belum ada catatan.</td></tr>'}</tbody></table></div>
+ <p class="note">Riwayat tersimpan di browser perangkat ini (maks. 3.000 catatan terbaru). Kegiatan akun RS di perangkat lain tidak tercatat di sini.</p>`;
+ $('#lg-rs').onchange=e=>{LOGF.rs=e.target.value;PAGES.log(m)};$('#lg-h').onchange=e=>{LOGF.h=e.target.value;PAGES.log(m)};
+ $('#lg-clr').onclick=()=>{if(confirm('Hapus seluruh riwayat kegiatan?')){localStorage.removeItem(LOGK);PAGES.log(m)}};
+ $('#lg-x').onclick=()=>saveFile('riwayat_kegiatan.xlsx',xlsxOf([['Riwayat',V.map(x=>({Waktu:new Date(x.t).toLocaleString('id-ID'),RumahSakit:x.rs,Pengguna:x.user,Kegiatan:x.action,Halaman:x.hal||'',Hasil:x.hasil,DisetujuiOleh:x.oleh||''}))]]))};
+/* ringkasan di Panel super admin */
+const _akunG=PAGES.akun;PAGES.akun=m=>{_akunG(m);if(!ME||ME.role!=='super')return;const L=actLog().filter(x=>x.hasil!=='Login').slice(0,5);const c=m.querySelector('.sa-cards');if(!c)return;
+ c.insertAdjacentHTML('afterend',`<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0">Percobaan akses terbaru</h3><a class="btn" href="#log">Lihat riwayat kegiatan →</a></div>${L.length?`<div class="tw" style="margin-top:10px"><table><tbody>${L.map(x=>`<tr><td style="white-space:nowrap">${new Date(x.t).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</td><td><b>${esc(x.rs)}</b></td><td>${esc(x.action)}</td><td><span class="tag ${x.hasil==='Diizinkan'?'t-ok':x.hasil==='Batal'?'':'t-bad'}">${esc(x.hasil)}</span></td></tr>`).join('')}</tbody></table></div>`:'<p class="note" style="margin:8px 0 0">Belum ada percobaan unduh/unggah dari akun rumah sakit.</p>'}</div>`)};
+try{if(ME){_applyRS();renderNav();route(true)}}catch(e){}
 </script>
 </body></html>
