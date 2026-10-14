@@ -1373,13 +1373,18 @@ const CH=700000,ckey=dk=>'uc::'+dk+'::claims';
 
 /* ---- sinkron data ---- */
 let CUR=null,busy=false,timer=null;
+const META=new Map(),META_KEY='meta:identitas';
+const metaOf=u=>(u&&META.get(u.uid))||null;
+async function loadMeta(){try{const rows=await api('GET','/rest/v1/kv?key=eq.'+META_KEY+'&select=owner,value')||[];rows.forEach(r=>{try{META.set(r.owner,JSON.parse(r.value))}catch(e){}})}catch(e){}}
+const identStr=v=>{try{return JSON.stringify(JSON.parse(v).identitas||{})}catch(e){return null}};
 const nowIso=()=>new Date().toISOString();
 async function upsert(rows){for(let i=0;i<rows.length;){let sz=0,j=i;while(j<rows.length&&(j===i||sz+rows[j].value.length<1500000)){sz+=rows[j].value.length;j++}
   await api('POST','/rest/v1/kv?on_conflict=owner,key',{body:rows.slice(i,j),headers:{Prefer:'resolution=merge-duplicates,return=minimal'}});i=j}}
 const delKey=(uid,k)=>api('DELETE','/rest/v1/kv?owner=eq.'+uid+'&key=eq.'+encodeURIComponent(k),{headers:{Prefer:'return=minimal'}});
 async function pull(u){
- const rows=await api('GET','/rest/v1/kv?owner=eq.'+u.uid+'&select=key,value')||[];const last=new Map();let meta=null;const ch={};
+ const rows=await api('GET','/rest/v1/kv?owner=eq.'+u.uid+'&select=key,value')||[];const last=new Map();let meta=null,metaLast=null;const ch={};
  for(const r of rows){
+  if(r.key===META_KEY){metaLast=r.value;try{META.set(u.uid,JSON.parse(r.value))}catch(e){}continue}
   if(r.key==='idb:claims:meta'){try{meta=JSON.parse(r.value)}catch(e){}continue}
   if(r.key.startsWith('idb:claims:')){ch[+r.key.slice(11)]=r.value;continue}
   try{localStorage.setItem(r.key,r.value)}catch(e){}last.set(r.key,r.value)}
@@ -1387,7 +1392,7 @@ async function pull(u){
  if(meta&&meta.n&&Array.from({length:meta.n},(_,i)=>ch[i]).every(x=>typeof x==='string')){
   claimsAt=meta.at;claimsN=meta.n;
   try{const loc=await idbGet(ckey(u.dataKey));if(!loc||(loc.at||0)<meta.at){const obj=JSON.parse(await gunz(Array.from({length:meta.n},(_,i)=>ch[i]).join('')));await idbPut(ckey(u.dataKey),obj)}}catch(e){}}
- return {last,claimsAt,claimsN}}
+ return {last,claimsAt,claimsN,metaLast}}
 async function scanClaims(c){
  const k=ckey(c.u.dataKey);let v;try{v=await idbGet(k)}catch(e){return}
  if(v&&v.at!==c.claimsAt){
@@ -1403,13 +1408,15 @@ async function scan(){
   const keys=localKeys(c.u.dataKey),up=[],del=[];
   for(const k of keys){const v=localStorage.getItem(k);if(v!==null&&c.last.get(k)!==v)up.push({owner:c.u.uid,key:k,value:v})}
   for(const k of c.last.keys())if(!keys.includes(k))del.push(k);
+  let metaNew=null;const dkRow=up.find(r=>r.key===c.u.dataKey);if(dkRow){const ms=identStr(dkRow.value);if(ms&&ms!==c.metaLast)metaNew=ms}
   let claimsDirty=false;try{const v=await idbGet(ckey(c.u.dataKey));claimsDirty=v?v.at!==c.claimsAt:c.claimsAt!=null}catch(e){}
-  if(up.length||del.length||claimsDirty){
+  if(up.length||del.length||claimsDirty||metaNew){
    setStatus('saving');
    if(up.length){await upsert(up.map(r=>Object.assign({updated_at:nowIso()},r)));up.forEach(r=>c.last.set(r.key,r.value))}
+   if(metaNew){await upsert([{owner:c.u.uid,key:META_KEY,value:metaNew,updated_at:nowIso()}]);c.metaLast=metaNew;try{META.set(c.u.uid,JSON.parse(metaNew))}catch(e){}}
    for(const k of del){await delKey(c.u.uid,k);c.last.delete(k)}
    if(claimsDirty)await scanClaims(c)}
-  if(st!=='ok'||up.length||del.length||claimsDirty)setStatus('ok')}
+  if(st!=='ok'||up.length||del.length||claimsDirty||metaNew)setStatus('ok')}
  catch(e){if(e.code==='auth'){setStatus('err','Sesi berakhir, masuk kembali')}else setStatus('err',e.message)}
  finally{busy=false}}
 function isDirty(){if(!CUR)return false;const c=CUR,keys=localKeys(c.u.dataKey);
@@ -1419,7 +1426,7 @@ async function openData(u){
  await closeData(true);
  if(!u||!u.dataKey||!u.uid)return;
  setStatus('saving');
- const p=await pull(u);CUR={u,last:p.last,claimsAt:p.claimsAt,claimsN:p.claimsN};
+ const p=await pull(u);CUR={u,last:p.last,claimsAt:p.claimsAt,claimsN:p.claimsN,metaLast:p.metaLast};
  setStatus('ok');clearInterval(timer);timer=setInterval(scan,2500);scan()}
 async function closeData(wipe){
  clearInterval(timer);timer=null;const c=CUR;if(!c)return;
@@ -1442,7 +1449,7 @@ async function patch(u,fresh){
  if(u.role==='rs'&&u.pv)body.pv=u.pv;
  if(sup&&u.role==='rs'){body.tahap=u.tahap||null;body.aktif_sampai=u.aktifSampai||null}
  await api('PATCH','/rest/v1/profiles?id=eq.'+u.uid,{body,headers:{Prefer:'return=minimal'}});
- if(fresh&&sup&&u.role==='rs'&&u.dataKey){const rows=localKeys(u.dataKey).map(k=>({owner:u.uid,key:k,value:localStorage.getItem(k),updated_at:nowIso()})).filter(r=>r.value!==null);if(rows.length)await upsert(rows);if(!(CUR&&CUR.u.uid===u.uid))rows.forEach(r=>localStorage.removeItem(r.key))}}
+ if(fresh&&sup&&u.role==='rs'&&u.dataKey){const rows=localKeys(u.dataKey).map(k=>({owner:u.uid,key:k,value:localStorage.getItem(k),updated_at:nowIso()})).filter(r=>r.value!==null);if(rows.length)await upsert(rows);{const dr=rows.find(r=>r.key===u.dataKey),ms=dr&&identStr(dr.value);if(ms){await upsert([{owner:u.uid,key:META_KEY,value:ms,updated_at:nowIso()}]);try{META.set(u.uid,JSON.parse(ms))}catch(e){}}}if(!(CUR&&CUR.u.uid===u.uid))rows.forEach(r=>localStorage.removeItem(r.key))}}
 async function removeUser(uid){
  try{await api('POST','/functions/v1/akun',{body:{action:'delete',id:uid}})}
  catch(e){try{AUTH.users=await loadProfiles();snapAll(AUTH.users);if(typeof PAGES!=='undefined'&&location.hash==='#akun')route(true)}catch(x){}throw e}}
@@ -1454,7 +1461,7 @@ async function afterAuth(){
  if(!me){S=null;saveS();throw err('Akun ini belum terdaftar di aplikasi. Hubungi super admin.','noprofile')}
  AUTH={users:list};snapAll(list);const ME_=AUTH.users.find(u=>u.uid===S.uid);
  if(ME_.role==='rs'){await openData(ME_)}
- else{try{await logLoad()}catch(e){}const c=ses.get(CTXK),cu=c&&AUTH.users.find(x=>x.id===c);if(cu&&cu.dataKey)await openData(cu)}
+ else{await loadMeta();try{await logLoad()}catch(e){}const c=ses.get(CTXK),cu=c&&AUTH.users.find(x=>x.id===c);if(cu&&cu.dataKey)await openData(cu)}
  setStatus('ok');return ME_}
 async function signIn(un,pw){
  const r=await passwordGrant(un,pw);
@@ -1479,7 +1486,7 @@ window.addEventListener('beforeunload',e=>{if(isDirty()){e.preventDefault();e.re
 document.addEventListener('visibilitychange',()=>{if(document.hidden)scan()});
 window.addEventListener('online',()=>scan());
 window.addEventListener('unhandledrejection',e=>{const r=e.reason;if(r&&r.uc){e.preventDefault();try{toast(r.message)}catch(x){}}});
-return {signIn,restore,logout,openData,closeData,saveAuth,fn,verifyPw,superOk,setOwnPw,logPush,logLoad,logClear,toUser,scan,get on(){return !!S},get uid(){return S&&S.uid}};
+return {metaOf,signIn,restore,logout,openData,closeData,saveAuth,fn,verifyPw,superOk,setOwnPw,logPush,logLoad,logClear,toUser,scan,get on(){return !!S},get uid(){return S&&S.uid}};
 })();
 
 async function sha(t){try{const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}catch(e){let h=5381;for(const c of t)h=((h<<5)+h+c.charCodeAt(0))>>>0;return 'x'+h.toString(16)}}
@@ -2653,7 +2660,7 @@ PAGES.identitas=m=>{const I=D.identitas||(D.identitas={}),u=dataUser(),sup=ME&&M
 {const _ld=loadData;loadData=function(){_ld();try{const P=D.param||{};if(!(D.ruang||[]).length&&!(D.tindakan||[]).length&&+P.kwh===+SEED.param.kwh&&+P.nilaiGedung===+SEED.param.nilaiGedung){Object.assign(P,{luasPBG:0,nilaiGedung:0,kwh:0,tarifKwh:0});R=compute(D);persist()}}catch(e){}}}
 window.__ucDemo=()=>{const u=dataUser();return !!u&&(u.id==='rsx'||u.id==='rssim')};
 /* ===== Panel super admin ===== */
-const identOfUser=u=>{try{const s=u.dataKey&&store.get(u.dataKey);if(s){const d=JSON.parse(s);if(d&&d.identitas)return d.identitas}}catch(e){}return (seedFor(u)||{}).identitas||{}};
+const identOfUser=u=>{try{const s=u.dataKey&&store.get(u.dataKey);if(s){const d=JSON.parse(s);if(d&&d.identitas)return d.identitas}}catch(e){}return cloud.metaOf(u)||((u.id==='rsx'||u.id==='rssim')?(seedFor(u)||{}).identitas:{nama:u.name})||{}};
 PAGES.akun=m=>{if(!ME||ME.role!=='super'){location.hash='identitas';return}
  
  const RS=AUTH.users.filter(u=>u.role==='rs'),SA=AUTH.users.filter(u=>u.role==='super');
