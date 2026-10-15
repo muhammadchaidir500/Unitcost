@@ -2807,12 +2807,12 @@ async function saCheck(pw){return await cloud.superOk(pw)}
 function gate(action){
  if(!gated())return Promise.resolve(true);
  if(useGrant())return Promise.resolve(true);
- return new Promise(res=>{const o=document.createElement('div');o.className='modal gate-m';
-  o.innerHTML=`<form class="mbox" role="dialog" aria-label="Izin super admin"><h3>🔐 Perlu izin super admin</h3><p class="note" style="margin:0">Tindakan <b>${esc(action)}</b> hanya dapat dilakukan dengan kata sandi super admin. Percobaan ini dicatat di riwayat kegiatan.</p><label>Kata sandi super admin<input name="pw" type="password" autocomplete="off" required></label><div class="gate-err" style="color:#C0392B;font-size:13px;font-weight:600;min-height:1em"></div><div class="mact"><button type="button" class="btn" data-x>Batal</button><button class="btn pri">Izinkan</button></div></form>`;
+ return new Promise(res=>{const UP=/unggah|upload|impor|import/i.test(action)&&!/unduh|ekspor|export|download|template|cetak|print|cadang|backup/i.test(action);const o=document.createElement('div');o.className='modal gate-m';
+  o.innerHTML=`<form class="mbox" role="dialog" aria-label="Konfirmasi kata sandi"><h3>${UP?"🔐 Konfirmasi kata sandi Anda":"🔐 Perlu izin super admin"}</h3><p class="note" style="margin:0">Tindakan <b>${esc(action)}</b> ${UP?"memerlukan kata sandi akun rumah sakit Anda (bukan super admin).":"hanya dapat dilakukan dengan kata sandi super admin."} Percobaan ini dicatat di riwayat kegiatan.</p><label>${UP?"Kata sandi akun Anda":"Kata sandi super admin"}<input name="pw" type="password" autocomplete="off" required></label><div class="gate-err" style="color:#C0392B;font-size:13px;font-weight:600;min-height:1em"></div><div class="mact"><button type="button" class="btn" data-x>Batal</button><button class="btn pri">Izinkan</button></div></form>`;
   document.body.append(o);const f=o.querySelector('form');setTimeout(()=>f.pw.focus(),20);let tries=0;
   const done=v=>{o.remove();res(v)};
   f.querySelector('[data-x]').onclick=()=>{logAct({action,hasil:'Batal'});done(false)};
-  f.onsubmit=async e=>{e.preventDefault();const sa=await saCheck(f.pw.value);
+  f.onsubmit=async e=>{e.preventDefault();const sa=UP?((await cloud.verifyPw(ME.username,f.pw.value))?{username:ME.username}:null):await saCheck(f.pw.value);
    if(sa){logAct({action,hasil:'Diizinkan',oleh:sa.username});GRANT=Date.now()+30000;done(true)}
    else{tries++;logAct({action,hasil:'Sandi salah'});f.querySelector('.gate-err').textContent='Kata sandi salah'+(tries>1?' ('+tries+'x)':'')+'.';f.pw.value='';f.pw.focus();if(tries>=3){done(false)}}}})}
 /* 1) semua unduhan lewat saveFile */
