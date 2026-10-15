@@ -1345,7 +1345,7 @@ async function api(method,path,o={}){
  const t=await r.text();return t?JSON.parse(t):null}
 async function passwordGrant(un,pw){return raw('POST','/auth/v1/token?grant_type=password',{auth:false,body:{email:EM(un),password:pw}})}
 async function verifyPw(un,pw){try{const r=await passwordGrant(un,pw);return r.ok}catch(e){return false}}
-const toUser=p=>({id:p.legacy_id||p.id,uid:p.id,username:p.username,name:p.name,role:p.role,dataKey:p.data_key||null,created:p.created_at,pv:p.pv||undefined,tahap:p.tahap||undefined,aktifSampai:p.aktif_sampai||''});
+const toUser=p=>({id:p.legacy_id||p.id,uid:p.id,username:p.username,name:p.name,role:p.role,dataKey:p.data_key||null,created:p.created_at,pv:p.pv||undefined,tahap:p.tahap||undefined,aktifSampai:p.aktif_sampai||'',menu:Array.isArray(p.menu)?p.menu:undefined});
 const loadProfiles=async()=>(await api('GET','/rest/v1/profiles?select=*&order=created_at.asc')||[]).map(toUser);
 
 /* ---- status simpan ---- */
@@ -1436,7 +1436,7 @@ async function closeData(wipe){
  else if(dirty)setStatus('err','Ada perubahan yang belum tersimpan di server')}
 
 /* ---- akun ---- */
-const SNAP=new Map(),sig=u=>JSON.stringify([u.name,u.tahap||null,u.aktifSampai||null,u.pv||null]);
+const SNAP=new Map(),sig=u=>JSON.stringify([u.name,u.tahap||null,u.aktifSampai||null,u.pv||null,u.menu||null]);
 let ops=Promise.resolve();
 const queue=f=>{ops=ops.then(f).catch(e=>{try{toast(e.message||'Gagal menyimpan perubahan akun.')}catch(x){}})};
 function snapAll(list){SNAP.clear();list.forEach(u=>SNAP.set(u.uid,sig(u)))}
@@ -1447,7 +1447,7 @@ function saveAuth(){
 async function patch(u,fresh){
  const sup=ME&&ME.role==='super',body={name:u.name};
  if(u.role==='rs'&&u.pv)body.pv=u.pv;
- if(sup&&u.role==='rs'){body.tahap=u.tahap||null;body.aktif_sampai=u.aktifSampai||null}
+ if(sup&&u.role==='rs'){body.tahap=u.tahap||null;body.aktif_sampai=u.aktifSampai||null;body.menu=u.menu||null}
  await api('PATCH','/rest/v1/profiles?id=eq.'+u.uid,{body,headers:{Prefer:'return=minimal'}});
  if(fresh&&sup&&u.role==='rs'&&u.dataKey){const rows=localKeys(u.dataKey).map(k=>({owner:u.uid,key:k,value:localStorage.getItem(k),updated_at:nowIso()})).filter(r=>r.value!==null);if(rows.length)await upsert(rows);{const dr=rows.find(r=>r.key===u.dataKey),ms=dr&&identStr(dr.value);if(ms){await upsert([{owner:u.uid,key:META_KEY,value:ms,updated_at:nowIso()}]);try{META.set(u.uid,JSON.parse(ms))}catch(e){}}}if(!(CUR&&CUR.u.uid===u.uid))rows.forEach(r=>localStorage.removeItem(r.key))}}
 async function removeUser(uid){
@@ -2732,14 +2732,14 @@ const needOf=id=>{for(const t of TAHAP)if(t.ids.includes(id))return t.n;return 4
 const tahapOf=u=>!u?4:u.role!=='rs'?4:(+u.tahap||4);
 const expiredOf=u=>!!(u&&u.role==='rs'&&u.aktifSampai&&new Date(u.aktifSampai+'T23:59:59')<new Date());
 function lockInfo(id){if(!ME)return null;const u=dataUser();if(!u||ME.role==='super')return null;
- if(expiredOf(u)&&id!=='identitas')return {exp:true};const need=needOf(id);return need>tahapOf(u)?{need}:null}
+ if(expiredOf(u)&&id!=='identitas')return {exp:true};if(Array.isArray(u.menu))return (id==='identitas'||u.menu.includes(id))?null:{menu:true};const need=needOf(id);return need>tahapOf(u)?{need}:null}
 const _routeT=route;
 route=function(keep){const id=location.hash.slice(1)||'dashboard';const L=ME?lockInfo(id):null;
  if(!L)return _routeT(keep);
  const sw=document.getElementById('simwrap');if(sw)sw.hidden=true;
- const m=$('#main');const T=L.exp?null:TAHAP[L.need-1];const u=dataUser();const cur=tahapOf(u);
+ const m=$('#main');const T=(L.exp||L.menu)?null:TAHAP[L.need-1];const u=dataUser();const cur=tahapOf(u);
  const lbl=(()=>{for(const [g,items] of navList())for(const it of items){if(it[0]===id)return it[2];if(Array.isArray(it[2])){const x=it[2].find(z=>z[0]===id);if(x)return x[1]}}return 'Modul ini'})();
- m.innerHTML=L.exp?`<div class="lk-box"><div class="lk-ic">⏳</div><h2>Masa aktif akun berakhir</h2><p>Masa aktif akun ${esc(u.name)} berakhir pada <b>${new Date(u.aktifSampai).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'})}</b>. Data Anda tetap tersimpan dan dapat dipakai kembali setelah masa aktif diperpanjang.</p><p>Hubungi pendamping / super admin UnitCost untuk perpanjangan.</p><p><a class="btn pri" href="#identitas">Kembali ke Panel rumah sakit</a></p></div>`
+ m.innerHTML=L.menu?`<div class="lk-box"><div class="lk-ic">🔒</div><div class="pn-k" style="color:var(--muted)">${esc(lbl)}</div><h2>Menu ini belum dibuka untuk akun Anda</h2><p>Akses menu diatur oleh super admin / pendamping UnitCost. Hubungi pendamping bila Anda perlu membuka menu ini.</p><p><a class="btn pri" href="#identitas">Kembali ke Panel rumah sakit</a></p></div>`:L.exp?`<div class="lk-box"><div class="lk-ic">⏳</div><h2>Masa aktif akun berakhir</h2><p>Masa aktif akun ${esc(u.name)} berakhir pada <b>${new Date(u.aktifSampai).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'})}</b>. Data Anda tetap tersimpan dan dapat dipakai kembali setelah masa aktif diperpanjang.</p><p>Hubungi pendamping / super admin UnitCost untuk perpanjangan.</p><p><a class="btn pri" href="#identitas">Kembali ke Panel rumah sakit</a></p></div>`
  :`<div class="lk-box"><div class="lk-ic">🔒</div><div class="pn-k" style="color:var(--muted)">${esc(lbl)}</div><h2>Terbuka di Tahap ${T.n} · ${esc(T.nama)}</h2>
   <p>Modul ini dibuka bersama pendamping setelah tahap sebelumnya selesai, agar data yang dipakai sudah tervalidasi dan hasilnya bisa dibaca dengan benar.</p>
   <div class="lk-steps">${TAHAP.map(t=>`<div class="lk-st ${t.n<=cur?'done':''} ${t.n===T.n?'tgt':''}"><b>Tahap ${t.n}</b><span>${esc(t.nama)}</span><small>${t.n<=cur?'terbuka':'terkunci'}</small></div>`).join('')}</div>
@@ -2767,9 +2767,23 @@ PAGES.akun=m=>{_akunPage(m);if(!ME||ME.role!=='super')return;
   const r=$('#nf-role');if(r)r.dispatchEvent(new Event('change'))}
  const tb=m.querySelector('.tw table');if(!tb)return;const th=tb.querySelector('thead tr');th.children[2].insertAdjacentHTML('afterend','<th>Paket / masa aktif</th>');
  tb.querySelectorAll('tbody tr').forEach(tr=>{const b=tr.querySelector('[data-a="open"]');if(!b){if(tr.children.length>1)tr.children[2].insertAdjacentHTML('afterend','<td></td>');return}const u=AUTH.users.find(x=>x.id===b.dataset.id);if(!u)return;
-  tr.children[2].insertAdjacentHTML('afterend',`<td class="pk-td"><select data-th="${u.id}">${TAHAP.map(t=>`<option value="${t.n}" ${tahapOf(u)===t.n?'selected':''}>Tahap ${t.n} · ${esc(t.nama)}</option>`).join('')}</select><input type="date" data-ak="${u.id}" value="${esc(u.aktifSampai||'')}" title="Aktif sampai (kosong = tanpa batas)">${expiredOf(u)?'<span class="tag t-bad">berakhir</span>':''}</td>`)});
+  tr.children[2].insertAdjacentHTML('afterend',`<td class="pk-td"><select data-th="${u.id}">${TAHAP.map(t=>`<option value="${t.n}" ${tahapOf(u)===t.n?'selected':''}>Tahap ${t.n} · ${esc(t.nama)}</option>`).join('')}</select><input type="date" data-ak="${u.id}" value="${esc(u.aktifSampai||'')}" title="Aktif sampai (kosong = tanpa batas)">${expiredOf(u)?'<span class="tag t-bad">berakhir</span>':''}<button class="btn" data-mn="${u.id}" style="padding:5px 9px;font-size:12px">Menu: ${Array.isArray(u.menu)?u.menu.length+' dipilih':'ikut Tahap'}</button></td>`)});
+ m.querySelectorAll('[data-mn]').forEach(b=>b.onclick=()=>menuEditor(m,b.dataset.mn));
  m.querySelectorAll('[data-th]').forEach(s=>s.onchange=()=>{const u=AUTH.users.find(x=>x.id===s.dataset.th);u.tahap=+s.value;saveAuth();toast(u.name+': paket diubah ke Tahap '+s.value+'.')});
  m.querySelectorAll('[data-ak]').forEach(s=>s.onchange=()=>{const u=AUTH.users.find(x=>x.id===s.dataset.ak);u.aktifSampai=s.value;saveAuth();toast(u.name+': masa aktif '+(s.value?'sampai '+new Date(s.value).toLocaleDateString('id-ID'):'tanpa batas')+'.');PAGES.akun(m)})};
+function menuEditor(m,uid){const u=AUTH.users.find(x=>x.id===uid);if(!u)return;
+ const lab={};try{for(const [g,items] of navList())for(const it of items){if(Array.isArray(it[2]))it[2].forEach(z=>lab[z[0]]=z[1]);else lab[it[0]]=it[2]}}catch(e){}
+ const cur=new Set(Array.isArray(u.menu)?u.menu:TAHAP.filter(t=>t.n<=tahapOf(u)).flatMap(t=>t.ids));
+ let box=document.getElementById('mnbox');if(box)box.remove();box=document.createElement('div');box.id='mnbox';box.className='card pk-card';
+ box.innerHTML=`<div class="pn-h"><h3>Akses menu · ${esc(u.name)}</h3><button class="btn" data-x>Tutup</button></div>
+ <p class="note">Centang menu yang boleh dibuka akun ini. “Panel rumah sakit” selalu terbuka. Pilihan ini menggantikan aturan Tahap; tekan “Kembali ikut Tahap” untuk memakai aturan paket lagi.</p>
+ ${TAHAP.map(t=>`<div style="margin:10px 0"><b>Tahap ${t.n} · ${esc(t.nama)}</b> <a href="#" data-grp="${t.n}" style="font-size:12px;margin-left:8px">pilih semua / kosongkan</a><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 14px;margin-top:4px">${t.ids.filter(i=>i!=='identitas').map(i=>`<label style="font-size:13px;display:flex;gap:6px;align-items:center"><input type="checkbox" data-id="${i}" data-t="${t.n}" ${cur.has(i)?'checked':''}>${esc(lab[i]||i)}</label>`).join('')}</div></div>`).join('')}
+ <p><button class="btn pri" data-sv>Simpan akses menu</button> <button class="btn" data-rs>Kembali ikut Tahap</button></p>`;
+ const tw=m.querySelector('.tw');(tw||m.firstChild).before(box);box.scrollIntoView({behavior:'smooth',block:'start'});
+ box.querySelector('[data-x]').onclick=()=>box.remove();
+ box.querySelectorAll('[data-grp]').forEach(a=>a.onclick=e=>{e.preventDefault();const cs=[...box.querySelectorAll('[data-t="'+a.dataset.grp+'"]')];const all=cs.every(c=>c.checked);cs.forEach(c=>c.checked=!all)});
+ box.querySelector('[data-sv]').onclick=()=>{u.menu=[...box.querySelectorAll('[data-id]:checked')].map(c=>c.dataset.id);saveAuth();toast(u.name+': akses menu disimpan ('+u.menu.length+' menu).');PAGES.akun(m)};
+ box.querySelector('[data-rs]').onclick=()=>{delete u.menu;saveAuth();toast(u.name+': akses menu kembali mengikuti Tahap '+tahapOf(u)+'.');PAGES.akun(m)}}
 /* template unduhan: akun RS hanya mendapat template isian Tahap 1 */
 const _ungT=PAGES.unggah;
 PAGES.unggah=m=>{_ungT(m);if(!ME||ME.role==='super')return;const u=dataUser();if(u&&(u.id==='rsx'||u.id==='rssim'))return;
